@@ -626,7 +626,6 @@ class KittiDataset(object):
                 downsample_voxel_size)
         return cam_points
 
-
     def calc_distances(self, p0, points):
         return ((p0 - points)**2).sum(axis=1)
 

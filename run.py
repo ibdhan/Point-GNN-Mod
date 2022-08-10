@@ -69,7 +69,7 @@ assert os.path.isfile(CONFIG_PATH), 'No config file found in %s'
 config = load_config(CONFIG_PATH)
 
 # setup dataset ===============================================================
-if IS_TEST:
+if IS_TEST: #Testing data
     dataset = KittiDataset(
         os.path.join(DATASET_DIR, 'image/testing/image_2'),
         os.path.join(DATASET_DIR, 'velodyne/testing/velodyne/'),
@@ -77,7 +77,7 @@ if IS_TEST:
         '',
         num_classes=config['num_classes'],
         is_training=False)
-else:
+else: #Training data
     dataset = KittiDataset(
         os.path.join(DATASET_DIR, 'image/training/image_2'),
         os.path.join(DATASET_DIR, 'velodyne/training/velodyne/'),
@@ -107,6 +107,7 @@ def occlusion(label, xyz):
 BOX_ENCODING_LEN = get_encoding_len(config['box_encoding_method'])
 box_encoding_fn = get_box_encoding_fn(config['box_encoding_method'])
 box_decoding_fn = get_box_decoding_fn(config['box_encoding_method'])
+
 if config['input_features'] == 'irgb':
     t_initial_vertex_features = tf.placeholder(
         dtype=tf.float32, shape=[None, 4])
@@ -125,21 +126,26 @@ elif config['input_features'] == 'i':
 elif config['input_features'] == '0':
     t_initial_vertex_features = tf.placeholder(
         dtype=tf.float32, shape=[None, 1])
+
 t_vertex_coord_list = [tf.placeholder(dtype=tf.float32, shape=[None, 3])]
 for _ in range(len(config['runtime_graph_gen_kwargs']['level_configs'])):
     t_vertex_coord_list.append(
         tf.placeholder(dtype=tf.float32, shape=[None, 3]))
+
 t_edges_list = []
 for _ in range(len(config['runtime_graph_gen_kwargs']['level_configs'])):
     t_edges_list.append(
         tf.placeholder(dtype=tf.int32, shape=[None, 2]))
+
 t_keypoint_indices_list = []
 for _ in range(len(config['runtime_graph_gen_kwargs']['level_configs'])):
     t_keypoint_indices_list.append(
         tf.placeholder(dtype=tf.int32, shape=[None, 1]))
+
 t_is_training = tf.placeholder(dtype=tf.bool, shape=[])
 model = get_model(config['model_name'])(num_classes=NUM_CLASSES,
                                         box_encoding_len=BOX_ENCODING_LEN, mode='test', **config['model_kwargs'])
+
 t_logits, t_pred_box = model.predict(
     t_initial_vertex_features, t_vertex_coord_list, t_keypoint_indices_list,
     t_edges_list,
@@ -203,6 +209,7 @@ graph = tf.get_default_graph()
 gpu_options = tf.GPUOptions(allow_growth=True)
 
 with tf.Session(graph=graph,config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
+    # Initialize session
     sess.run(tf.variables_initializer(tf.global_variables()))
     sess.run(tf.variables_initializer(tf.local_variables()))
     model_path = tf.train.latest_checkpoint(CHECKPOINT_PATH)
@@ -210,6 +217,7 @@ with tf.Session(graph=graph,config=tf.ConfigProto(gpu_options=gpu_options)) as s
     saver.restore(sess, model_path)
     previous_step = sess.run(global_step)
 
+    # Loop every frame
     for frame_idx in tqdm(range(0, NUM_TEST_SAMPLE)):
         start_time = time.time()
         if VISUALIZATION_LEVEL == 2:

@@ -22,6 +22,7 @@ from util.config_util import save_config, save_train_config, \
     load_train_config, load_config
 from util.summary_util import write_summary_scale
 
+# ArgParse ===============================================================
 parser = argparse.ArgumentParser(description='Training of PointGNN')
 parser.add_argument('train_config_path', type=str,
                    help='Path to train_config')
@@ -35,6 +36,7 @@ parser.add_argument('--dataset_split_file', type=str,
                    'Default="DATASET_ROOT_DIR/3DOP_splits'
                    '/train_config["train_dataset"]"')
 
+# Parse Arguments ===============================================================
 args = parser.parse_args()
 train_config = load_train_config(args.train_config_path)
 DATASET_DIR = args.dataset_root_dir
@@ -48,7 +50,8 @@ if 'train' in config_complete:
     config = config_complete['train']
 else:
     config = config_complete
-# input function ==============================================================
+
+# setup dataset ==============================================================
 dataset = KittiDataset(
     os.path.join(DATASET_DIR, 'image/training/image_2'),
     os.path.join(DATASET_DIR, 'velodyne/training/velodyne/'),
@@ -66,6 +69,7 @@ else:
     else:
         NUM_TEST_SAMPLE = train_config['NUM_TEST_SAMPLE']
 
+# setup model =================================================================
 BOX_ENCODING_LEN = get_encoding_len(config['box_encoding_method'])
 box_encoding_fn = get_box_encoding_fn(config['box_encoding_method'])
 box_decoding_fn = get_box_decoding_fn(config['box_encoding_method'])
@@ -75,6 +79,7 @@ aug_fn = preprocess.get_data_aug(train_config['data_aug_configs'])
 if 'crop_aug' in train_config:
     sampler = CropAugSampler(train_config['crop_aug']['crop_filename'])
 
+# fetch_data function =================================================================
 def fetch_data(frame_idx):
     cam_rgb_points = dataset.get_cam_points_in_image_with_rgb(frame_idx,
         config['downsample_by_voxel_size'])
@@ -132,6 +137,7 @@ def fetch_data(frame_idx):
     return(input_v, vertex_coord_list, keypoint_indices_list, edges_list,
         cls_labels, encoded_boxes, valid_boxes)
 
+# batch_data function =================================================================
 def batch_data(batch_list):
     N_input_v, N_vertex_coord_list, N_keypoint_indices_list, N_edges_list,\
     N_cls_labels, N_encoded_boxes, N_valid_boxes = zip(*batch_list)
@@ -175,6 +181,7 @@ if 'COPY_PER_GPU' in train_config:
     COPY_PER_GPU = train_config['COPY_PER_GPU']
 else:
     COPY_PER_GPU = 1
+
 NUM_GPU = train_config['NUM_GPU']
 input_tensor_sets = []
 for gi in range(NUM_GPU):
@@ -410,6 +417,7 @@ fetches = {
 }
 fetches.update(metrics_update_ops)
 
+# Class DataProvider ==========================================================
 class DataProvider(object):
     """This class provides input data to training.
     It has option to load dataset in memory so that preprocessing does not
@@ -437,8 +445,7 @@ class DataProvider(object):
     def preload(self, frame_idx_list):
         """async load dataset into memory."""
         for frame_idx in frame_idx_list:
-            result = self._worker_pool.apply_async(
-                self._fetch_data, (frame_idx,))
+            result = self._worker_pool.apply_async(self._fetch_data, (frame_idx,))
             self._results[frame_idx] = result
 
     def async_load(self, frame_idx):
@@ -458,15 +465,16 @@ class DataProvider(object):
     def provide(self, frame_idx):
         if self._load_dataset_to_mem:
             if self._load_every_N_time >= 1:
-                extend_frame_idx = frame_idx+np.random.choice(
-                    self._capacity)*NUM_TEST_SAMPLE
+                extend_frame_idx = frame_idx+np.random.choice(self._capacity)*NUM_TEST_SAMPLE
                 if extend_frame_idx not in self._buffer:
                     data = self.async_load(frame_idx)
                     self._buffer[extend_frame_idx] = (data, 0)
+                
                 data, ctr = self._buffer[extend_frame_idx]
                 if ctr == self._load_every_N_time:
                     data = self.async_load(frame_idx)
                     self._buffer[extend_frame_idx] = (data, 0)
+                
                 data, ctr = self._buffer[extend_frame_idx]
                 self._buffer[extend_frame_idx] = (data, ctr+1)
                 return data
@@ -489,12 +497,12 @@ data_provider = DataProvider(fetch_data, batch_data,
     num_workers=train_config['num_load_dataset_workers'],
     preload_list=list(range(NUM_TEST_SAMPLE)))
 
-
 # Training session ==========================================================
 batch_size = train_config.get('batch_size', 1)
 print('batch size=' + str(batch_size))
 saver = tf.train.Saver()
 graph = tf.get_default_graph()
+
 if train_config['gpu_memusage'] < 0:
     gpu_options = tf.GPUOptions(allow_growth=True)
 else:
@@ -503,21 +511,23 @@ else:
     else:
         gpu_options = tf.GPUOptions(
             per_process_gpu_memory_fraction=train_config['gpu_memusage'])
+
 batch_ctr = 0
 batch_gradient_list = []
-with tf.Session(graph=graph,
-    config=tf.ConfigProto(
-    allow_soft_placement=True, gpu_options=gpu_options,)) as sess:
+
+with tf.Session(graph=graph, config=tf.ConfigProto( allow_soft_placement=True, gpu_options=gpu_options,)) as sess:
     sess.run(tf.variables_initializer(tf.global_variables()))
     states = tf.train.get_checkpoint_state(train_config['train_dir'])
+    
     if states is not None:
         print('Restore from checkpoint %s' % states.model_checkpoint_path)
         saver.restore(sess, states.model_checkpoint_path)
         saver.recover_last_checkpoints(states.all_model_checkpoint_paths)
+    
     previous_step = sess.run(global_step)
     local_variables_initializer = tf.variables_initializer(tf.local_variables())
-    for epoch_idx in range((previous_step*batch_size)//NUM_TEST_SAMPLE,
-    train_config['max_epoch']):
+    
+    for epoch_idx in range((previous_step*batch_size)//NUM_TEST_SAMPLE, train_config['max_epoch']):
         sess.run(local_variables_initializer)
         start_time = time.time()
         frame_idx_list = np.random.permutation(NUM_TEST_SAMPLE)
@@ -526,23 +536,16 @@ with tf.Session(graph=graph,
             device_batch_size = batch_size//(COPY_PER_GPU*NUM_GPU)
             total_feed_dict = {}
             for gi in range(COPY_PER_GPU*NUM_GPU):
-                batch_frame_idx_list = frame_idx_list[
-                    batch_idx+\
-                    gi*device_batch_size:batch_idx+(gi+1)*device_batch_size]
-                input_v, vertex_coord_list, keypoint_indices_list, edges_list, \
-                cls_labels, encoded_boxes, valid_boxes \
-                    = data_provider.provide_batch(batch_frame_idx_list)
-                t_initial_vertex_features = \
-                    input_tensor_sets[gi]['t_initial_vertex_features']
+                batch_frame_idx_list = frame_idx_list[batch_idx+gi*device_batch_size:batch_idx+(gi+1)*device_batch_size]
+                input_v, vertex_coord_list, keypoint_indices_list, edges_list, cls_labels, encoded_boxes, valid_boxes = data_provider.provide_batch(batch_frame_idx_list)
+                t_initial_vertex_features = input_tensor_sets[gi]['t_initial_vertex_features']
                 t_class_labels = input_tensor_sets[gi]['t_class_labels']
                 t_encoded_gt_boxes = input_tensor_sets[gi]['t_encoded_gt_boxes']
                 t_valid_gt_boxes = input_tensor_sets[gi]['t_valid_gt_boxes']
                 t_is_training = input_tensor_sets[gi]['t_is_training']
                 t_edges_list = input_tensor_sets[gi]['t_edges_list']
-                t_keypoint_indices_list = \
-                    input_tensor_sets[gi]['t_keypoint_indices_list']
-                t_vertex_coord_list = \
-                    input_tensor_sets[gi]['t_vertex_coord_list']
+                t_keypoint_indices_list = input_tensor_sets[gi]['t_keypoint_indices_list']
+                t_vertex_coord_list = input_tensor_sets[gi]['t_vertex_coord_list']
                 feed_dict = {
                     t_initial_vertex_features: input_v,
                     t_class_labels: cls_labels,
@@ -551,16 +554,15 @@ with tf.Session(graph=graph,
                     t_is_training: True,
                 }
                 feed_dict.update(dict(zip(t_edges_list, edges_list)))
-                feed_dict.update(
-                    dict(zip(t_keypoint_indices_list, keypoint_indices_list)))
-                feed_dict.update(
-                    dict(zip(t_vertex_coord_list, vertex_coord_list)))
+                feed_dict.update(dict(zip(t_keypoint_indices_list, keypoint_indices_list)))
+                feed_dict.update(dict(zip(t_vertex_coord_list, vertex_coord_list)))
                 total_feed_dict.update(feed_dict)
+
             if train_config.get('is_pseudo_batch', False):
                 tf_gradient = [g for g, v in grads_cross_gpu]
-                batch_gradient = sess.run(tf_gradient,
-                    feed_dict=total_feed_dict)
+                batch_gradient = sess.run(tf_gradient, feed_dict=total_feed_dict)
                 batch_gradient_list.append(batch_gradient)
+
                 if batch_ctr % train_config['pseudo_batch_factor'] == 0:
                     batch_gradient_list = list(zip(*batch_gradient_list))
                     batch_gradient = [batch_gradient_list[ggi][0]
@@ -575,6 +577,7 @@ with tf.Session(graph=graph,
                 batch_ctr += 1
             else:
                 results = sess.run(fetches, feed_dict=total_feed_dict)
+            
             if 'max_steps' in train_config and train_config['max_steps'] > 0:
                 if results['step'] >= train_config['max_steps']:
                     checkpoint_path = os.path.join(train_config['train_dir'],
@@ -591,12 +594,14 @@ with tf.Session(graph=graph,
                     save_config(config_path, config_complete)
                     save_train_config(train_config_path, train_config)
                     raise SystemExit
+
         print('STEP: %d, epoch_idx: %d, lr: %f, time cost: %f'
             % (results['step'], epoch_idx, results['learning_rate'],
             time.time()-start_time))
         print('cls:%f, loc:%f, reg:%f, loss: %f'
             % (results['cls_loss'], results['loc_loss'], results['reg_loss'],
             results['total_loss']))
+        
         for class_idx in range(NUM_CLASSES):
             print('Class_%d: recall=%f, prec=%f, mAP=%f, loc=%f'
                 % (class_idx,
@@ -621,6 +626,7 @@ with tf.Session(graph=graph,
                 train_config['train_dir'])
         write_summary_scale('learning rate', results['learning_rate'],
             results['step'], train_config['train_dir'])
+        
         # save checkpoint ==================================================
         if (epoch_idx + 1) % train_config['save_every_epoch'] == 0:
             checkpoint_path = os.path.join(train_config['train_dir'],
@@ -636,6 +642,7 @@ with tf.Session(graph=graph,
                 global_step=results['step'])
             save_config(config_path, config_complete)
             save_train_config(train_config_path, train_config)
+    
     # save final
     checkpoint_path = os.path.join(train_config['train_dir'],
         train_config['checkpoint_path'])
