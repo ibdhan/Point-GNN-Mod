@@ -252,19 +252,37 @@ class PointSetPooling(object):
         Output_depth depends on the feature extraction options that
         are selected.
         """
+        # print("point_features: ", point_features)
+        # print("point_coordinates: ", point_coordinates)
+        # print("keypoint_indices: ", keypoint_indices)
+        # print("set_indices: ", set_indices)
+        # print("point_MLP_depth_list: ", point_MLP_depth_list)
+        # print("point_MLP_normalization_type: ", point_MLP_normalization_type)
+        # print("point_MLP_activation_type: ", point_MLP_activation_type)
+        # print("output_MLP_depth_list: ", output_MLP_depth_list)
+        # print("output_MLP_normalization_type: ", output_MLP_normalization_type)
+        # print("output_MLP_activation_type: ", output_MLP_activation_type)
+        # print()
+
         # Gather the points in a set
         point_set_features = tf.gather(point_features, set_indices[:,0])
         point_set_coordinates = tf.gather(point_coordinates, set_indices[:,0])
+        # print("point_set_features: ", point_set_features)
+        # print("point_set_coordinates: ", point_set_coordinates)
+        # print()
+
         # Gather the keypoints for each set
-        point_set_keypoint_indices = tf.gather(
-            keypoint_indices, set_indices[:, 1])
-        point_set_keypoint_coordinates = tf.gather(point_coordinates,
-            point_set_keypoint_indices[:,0])
+        point_set_keypoint_indices = tf.gather(keypoint_indices, set_indices[:, 1])
+        point_set_keypoint_coordinates = tf.gather(point_coordinates, point_set_keypoint_indices[:,0])
+        # print("point_set_keypoint_indices: ", point_set_keypoint_indices)
+        # print("point_set_keypoint_coordinates: ", point_set_keypoint_coordinates)
+        # print()
+
         # points within a set use relative coordinates to its keypoint
-        point_set_coordinates = \
-            point_set_coordinates - point_set_keypoint_coordinates
-        point_set_features = tf.concat(
-            [point_set_features, point_set_coordinates], axis=-1)
+        point_set_coordinates = point_set_coordinates - point_set_keypoint_coordinates
+        point_set_features = tf.concat([point_set_features, point_set_coordinates], axis=-1)
+        # print("point_set_features: ", point_set_features)
+        
         with tf.variable_scope('extract_vertex_features'):
             # Step 1: Extract all vertex_features
             extracted_point_features = self._point_feature_fn(
@@ -275,11 +293,13 @@ class PointSetPooling(object):
             set_features = self._aggregation_fn(
                 extracted_point_features, set_indices[:, 1],
                 tf.shape(keypoint_indices)[0])
+        
         with tf.variable_scope('combined_features'):
             set_features = self._output_fn(set_features,
                 Ks=output_MLP_depth_list, is_logits=False,
                 normalization_type=output_MLP_normalization_type,
                 activation_type=output_MLP_activation_type)
+        
         return set_features
 
 class GraphNetAutoCenter(object):
