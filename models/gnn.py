@@ -1,5 +1,6 @@
 """This file defines classes for the graph neural network. """
 
+import sys
 from functools import partial
 
 import tensorflow as tf
@@ -8,11 +9,14 @@ import tensorflow.contrib.slim as slim
 
 def instance_normalization(features):
     with tf.variable_scope(None, default_name='IN'):
-        mean, variance = tf.nn.moments(
-            features, [0], name='IN_stats', keep_dims=True)
-        features = tf.nn.batch_normalization(
-            features, mean, variance, None, None, 1e-12, name='IN_apply')
+        mean, variance = tf.nn.moments(features, [0], name='IN_stats', keep_dims=True)
+        features = tf.nn.batch_normalization(features, mean, variance, None, None, 1e-12, name='IN_apply')
     return(features)
+
+# Calculate euclidean distance between two points
+def euclideanDistance(x, y):
+    dist = tf.sqrt(tf.reduce_sum(tf.square(x - y), 1, keepdims = True))
+    return dist
 
 normalization_fn_dict = {
     'fused_BN_center': slim.batch_norm,
@@ -87,6 +91,14 @@ def multi_layer_neural_network_fn(features, Ks=(64, 32, 64), is_logits=False,
     normalization_type="fused_BN_center", activation_type='ReLU'):
     """A function to create multiple layers of neural network.
     """
+    # print("features.shape:", features.shape)
+    # print("features:", features)
+    # print("Ks:", Ks)
+    # print("is_logits:", is_logits)
+    # print("normalization_type:", normalization_type)
+    # print("activation_type:", activation_type)
+    # print()
+
     assert len(features.shape) == 2
     if is_logits:
         for i in range(len(Ks)-1):
@@ -264,41 +276,79 @@ class PointSetPooling(object):
         # print("output_MLP_activation_type: ", output_MLP_activation_type)
         # print()
 
-        # Gather the points in a set
+        point_features = tf.Print(point_features, [point_features], "\n1.point_features:", summarize=100)
+        point_coordinates = tf.Print(point_coordinates, [point_coordinates], "\n2.point_coordinates:", summarize=100)
+        keypoint_indices = tf.Print(keypoint_indices, [keypoint_indices], "\n3.keypoint_indices:", summarize=100)
+        set_indices = tf.Print(set_indices, [set_indices], "\n4.set_indices:", summarize=100)
+
+        ### Gather the points in a set ###
+        # point_features = tf.Print(point_features, [point_features], "point_features:", summarize=40)
         point_set_features = tf.gather(point_features, set_indices[:,0])
+        point_set_features = tf.Print(point_set_features, [point_set_features], "\n5.point_set_features:", summarize=100)
+        
         point_set_coordinates = tf.gather(point_coordinates, set_indices[:,0])
+        point_set_coordinates = tf.Print(point_set_coordinates, [point_set_coordinates], "\n6.point_set_coordinates:", summarize=100)
+        
         # print("point_set_features: ", point_set_features)
         # print("point_set_coordinates: ", point_set_coordinates)
         # print()
 
-        # Gather the keypoints for each set
+        ### Gather the keypoints for each set ###
         point_set_keypoint_indices = tf.gather(keypoint_indices, set_indices[:, 1])
+        point_set_keypoint_indices = tf.Print(point_set_keypoint_indices, [point_set_keypoint_indices], "\n7.point_set_keypoint_indices:", summarize=100)
+        
         point_set_keypoint_coordinates = tf.gather(point_coordinates, point_set_keypoint_indices[:,0])
+        point_set_keypoint_coordinates = tf.Print(point_set_keypoint_coordinates, [point_set_keypoint_coordinates], "\n8.point_set_keypoint_coordinates:", summarize=100)
+        
         # print("point_set_keypoint_indices: ", point_set_keypoint_indices)
         # print("point_set_keypoint_coordinates: ", point_set_keypoint_coordinates)
         # print()
 
-        # points within a set use relative coordinates to its keypoint
+        ### points within a set use relative coordinates to its keypoint ###
         point_set_coordinates = point_set_coordinates - point_set_keypoint_coordinates
-        point_set_features = tf.concat([point_set_features, point_set_coordinates], axis=-1)
+        point_set_coordinates = tf.Print(point_set_coordinates, [point_set_coordinates], "\n9.point_set_coordinates:", summarize=100)
+
+        ### edited ###
+        if False:
+            point_set_distance = tf.sqrt(tf.reduce_sum(tf.square(point_set_coordinates), 1, keepdims = True))
+            point_set_distance = tf.Print(point_set_distance, [point_set_distance], "\n9,5.point_set_distance:", summarize=100)
+            point_set_features = tf.concat([point_set_features, point_set_coordinates, point_set_distance], axis=-1)
+        else:
+            point_set_features = tf.concat([point_set_features, point_set_coordinates], axis=-1)
+        
+        point_set_features = tf.Print(point_set_features, [point_set_features], "\n10.point_set_features:", summarize=100)
+        
         # print("point_set_features: ", point_set_features)
+        # print()
+
+        # point_set_features = tf.Print(point_set_features, [point_set_features], "\npoint_set_features:", summarize=40)
         
         with tf.variable_scope('extract_vertex_features'):
             # Step 1: Extract all vertex_features
             extracted_point_features = self._point_feature_fn(
                 point_set_features,
-                Ks=point_MLP_depth_list, is_logits=False,
+                Ks=point_MLP_depth_list, 
+                is_logits=False,
                 normalization_type=point_MLP_normalization_type,
                 activation_type=point_MLP_activation_type)
+            
+            # extracted_point_features = tf.Print(extracted_point_features, [extracted_point_features], "\nextracted_point_features:", summarize=100)
+            
             set_features = self._aggregation_fn(
-                extracted_point_features, set_indices[:, 1],
+                extracted_point_features, 
+                set_indices[:, 1],
                 tf.shape(keypoint_indices)[0])
+            
+            # set_features = tf.Print(set_features, [set_features], "\nset_features:", summarize=100)
         
         with tf.variable_scope('combined_features'):
             set_features = self._output_fn(set_features,
-                Ks=output_MLP_depth_list, is_logits=False,
+                Ks=output_MLP_depth_list, 
+                is_logits=False,
                 normalization_type=output_MLP_normalization_type,
                 activation_type=output_MLP_activation_type)
+            
+            # set_features = tf.Print(set_features, [set_features], "\nset_features:", summarize=100)
         
         return set_features
 
@@ -354,9 +404,28 @@ class GraphNetAutoCenter(object):
 
         returns: a [N, M] tensor. Updated vertex features.
         """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
         # Gather the source vertex of the edges
         s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
         s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+        # print("s_vertex_features: ", s_vertex_features)
+        # print("s_vertex_coordinates: ", s_vertex_coordinates)
+        # print()
+
         # [optional] Compute the coordinates offset
         if auto_offset:
             offset = self._auto_offset_fn(input_vertex_features,
@@ -364,12 +433,18 @@ class GraphNetAutoCenter(object):
                 normalization_type=auto_offset_MLP_normalization_type,
                 activation_type=auto_offset_MLP_feature_activation_type)
             input_vertex_coordinates = input_vertex_coordinates + offset
+            # print("offset: ", offset)
+            # print("input_vertex_coordinates: ", input_vertex_coordinates)
+            # print()
+        
         # Gather the destination vertex of the edges
         d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+        # print("d_vertex_coordinates: ", d_vertex_coordinates)
+        
         # Prepare initial edge features
-        edge_features = tf.concat(
-            [s_vertex_features, s_vertex_coordinates - d_vertex_coordinates],
-             axis=-1)
+        edge_features = tf.concat([s_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
+        # print("edge_features: ", edge_features)
+        
         with tf.variable_scope('extract_vertex_features'):
             # Extract edge features
             edge_features = self._edge_feature_fn(
@@ -378,16 +453,23 @@ class GraphNetAutoCenter(object):
                 is_logits=False,
                 normalization_type=edge_MLP_normalization_type,
                 activation_type=edge_MLP_activation_type)
+            
             # Aggregate edge features
             aggregated_edge_features = self._aggregation_fn(
                 edge_features,
                 edges[:, 1],
                 tf.shape(input_vertex_features)[0])
+        
         # Update vertex features
         with tf.variable_scope('combined_features'):
             update_features = self._update_fn(aggregated_edge_features,
-                Ks=update_MLP_depth_list, is_logits=True,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
                 normalization_type=update_MLP_normalization_type,
                 activation_type=update_MLP_activation_type)
+        
         output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
         return output_vertex_features

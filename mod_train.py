@@ -13,14 +13,17 @@ import tensorflow as tf
 from dataset.kitti_dataset import KittiDataset
 from models.graph_gen import get_graph_generate_fn
 from models.models import get_model
-from models.box_encoding import get_box_decoding_fn, get_box_encoding_fn,\
-    get_encoding_len
+from models.box_encoding import get_box_decoding_fn, get_box_encoding_fn,get_encoding_len
 from models.crop_aug import CropAugSampler
 from models import preprocess
 from util.tf_util import average_gradients
-from util.config_util import save_config, save_train_config, \
-    load_train_config, load_config
+from util.config_util import save_config, save_train_config, load_train_config, load_config
 from util.summary_util import write_summary_scale
+
+### edited ###
+### Setting GPU id ###
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
 
 # ArgParse ===============================================================
 parser = argparse.ArgumentParser(description='Training of PointGNN')
@@ -210,7 +213,7 @@ for gi in range(NUM_GPU):
                 t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 1])
             elif config['input_features'] == '0':
                 t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 1])
-            if config['input_features'] == 'ixyz':
+            elif config['input_features'] == 'ixyz':
                 t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 4])
 
             t_vertex_coord_list = [tf.placeholder(dtype=tf.float32, shape=[None, 3])]
@@ -527,6 +530,15 @@ with tf.Session(graph=graph, config=tf.ConfigProto( allow_soft_placement=True, g
     
     previous_step = sess.run(global_step)
     local_variables_initializer = tf.variables_initializer(tf.local_variables())
+
+    ### edited ###
+    print("input_features:", config['input_features'])
+    print("NUM_GPU:", train_config['NUM_GPU'])
+    print("max_epoch:", train_config['max_epoch'])
+    print("NUM_TEST_SAMPLE:", NUM_TEST_SAMPLE)
+    print("batch_size:", batch_size)
+    print("initial_lr:", train_config['initial_lr'])
+    print("train_dir:", train_config['train_dir'])
     
     for epoch_idx in range((previous_step*batch_size)//NUM_TEST_SAMPLE, train_config['max_epoch']):
         sess.run(local_variables_initializer)

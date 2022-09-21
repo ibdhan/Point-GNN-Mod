@@ -38,12 +38,13 @@ class MultiLayerFastLocalGraphModelV2(object):
         """
         self.num_classes = num_classes
         self.box_encoding_len = box_encoding_len
+        
         if regularizer_type is None:
             assert regularizer_kwargs is None, 'No regularizer no kwargs'
             self._regularizer = None
         else:
-            self._regularizer = regularizer_dict[regularizer_type](
-                **regularizer_kwargs)
+            self._regularizer = regularizer_dict[regularizer_type](**regularizer_kwargs)
+        
         self._layer_configs = layer_configs
         self._default_layers_type = {
             'scatter_max_point_set_pooling': gnn.PointSetPooling(
@@ -73,6 +74,7 @@ class MultiLayerFastLocalGraphModelV2(object):
                     Ks=(64, 64,), num_layer=3)
                 ),
         }
+
         assert mode in ['train', 'eval', 'test'], 'Unsupported mode'
         self._mode = mode
 
@@ -110,56 +112,65 @@ class MultiLayerFastLocalGraphModelV2(object):
         [N_output, num_classes, box_encoding_len] box_encodings tensor for
         localization.
         """
-        with slim.arg_scope([slim.batch_norm], is_training=is_training), \
-            slim.arg_scope([slim.fully_connected],
-                weights_regularizer=self._regularizer):
-                tfeatures_list = []
-                tfeatures = t_initial_vertex_features
-                tfeatures_list.append(tfeatures)
-                for idx in range(len(self._layer_configs)-1):
-                    layer_config = self._layer_configs[idx]
-                    layer_scope = layer_config['scope']
-                    layer_type = layer_config['type']
-                    layer_kwargs = layer_config['kwargs']
-                    graph_level = layer_config['graph_level']
-                    t_vertex_coordinates = t_vertex_coord_list[graph_level]
-                    t_keypoint_indices = t_keypoint_indices_list[graph_level]
-                    t_edges = t_edges_list[graph_level]
-                    with tf.variable_scope(layer_scope, reuse=tf.AUTO_REUSE):
-                        flgn = self._default_layers_type[layer_type]
-                        print('@ level %d Graph, Add layer: %s, type: %s'%
-                            (graph_level, layer_scope, layer_type))
-                        if 'device' in layer_config:
-                            with tf.device(layer_config['device']):
-                                tfeatures = flgn.apply_regular(
-                                    tfeatures,
-                                    t_vertex_coordinates,
-                                    t_keypoint_indices,
-                                    t_edges,
-                                    **layer_kwargs)
-                        else:
+
+        print("\n-------------------- Start of Architecture --------------------\n")
+
+        with slim.arg_scope([slim.batch_norm], is_training=is_training), slim.arg_scope([slim.fully_connected], weights_regularizer=self._regularizer):
+            tfeatures_list = []
+            tfeatures = t_initial_vertex_features
+            tfeatures_list.append(tfeatures)
+
+            for idx in range(len(self._layer_configs)-1):
+                layer_config = self._layer_configs[idx]
+                layer_scope = layer_config['scope']
+                layer_type = layer_config['type']
+                layer_kwargs = layer_config['kwargs']
+                graph_level = layer_config['graph_level']
+                t_vertex_coordinates = t_vertex_coord_list[graph_level]
+                t_keypoint_indices = t_keypoint_indices_list[graph_level]
+                t_edges = t_edges_list[graph_level]
+
+                with tf.variable_scope(layer_scope, reuse=tf.AUTO_REUSE):
+                    flgn = self._default_layers_type[layer_type]
+                    print('@ LEVEL %d GRAPH, ADD LAYER: %s, TYPE: %s'%(graph_level, layer_scope, layer_type))
+                    
+                    if 'device' in layer_config:
+                        with tf.device(layer_config['device']):
                             tfeatures = flgn.apply_regular(
                                 tfeatures,
                                 t_vertex_coordinates,
                                 t_keypoint_indices,
                                 t_edges,
                                 **layer_kwargs)
+                    else:
+                        tfeatures = flgn.apply_regular(
+                            tfeatures,
+                            t_vertex_coordinates,
+                            t_keypoint_indices,
+                            t_edges,
+                            **layer_kwargs)
 
-                        tfeatures_list.append(tfeatures)
-                        print('Feature Dim:' + str(tfeatures.shape[-1]))
-                predictor_config = self._layer_configs[-1]
-                assert (predictor_config['type']=='classaware_predictor' or
-                    predictor_config['type']=='classaware_predictor_128' or
-                    predictor_config['type']=='classaware_separated_predictor')
-                predictor = self._default_layers_type[predictor_config['type']]
-                print('Final Feature Dim:'+str(tfeatures.shape[-1]))
-                with tf.variable_scope(predictor_config['scope'],
-                reuse=tf.AUTO_REUSE):
-                    logits, box_encodings =  predictor.apply_regular(tfeatures,
-                        num_classes=self.num_classes,
-                        box_encoding_len=self.box_encoding_len,
-                        **predictor_config['kwargs'])
-                    print("Prediction %d classes" % self.num_classes)
+                    tfeatures_list.append(tfeatures)
+                    print('Feature Dim:' + str(tfeatures.shape[-1]) + '\n')
+            
+            predictor_config = self._layer_configs[-1]
+            assert (predictor_config['type']=='classaware_predictor' or
+                predictor_config['type']=='classaware_predictor_128' or
+                predictor_config['type']=='classaware_separated_predictor')
+            
+            predictor = self._default_layers_type[predictor_config['type']]
+            print('@ LEVEL %d GRAPH, ADD LAYER: %s, TYPE: %s'%(predictor_config['graph_level'], predictor_config['scope'], predictor_config['type']))
+            print('Final Feature Dim:'+str(tfeatures.shape[-1]))
+
+            with tf.variable_scope(predictor_config['scope'], reuse=tf.AUTO_REUSE):
+                logits, box_encodings =  predictor.apply_regular(tfeatures,
+                    num_classes=self.num_classes,
+                    box_encoding_len=self.box_encoding_len,
+                    **predictor_config['kwargs'])
+                
+                print("Prediction %d classes" % self.num_classes)
+            
+        print("\n-------------------- End of Architecture --------------------\n")
         return logits, box_encodings
 
     def postprocess(self, logits):

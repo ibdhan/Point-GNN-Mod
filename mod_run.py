@@ -126,7 +126,7 @@ elif config['input_features'] == 'i':
 elif config['input_features'] == '0':
     t_initial_vertex_features = tf.placeholder(
         dtype=tf.float32, shape=[None, 1])
-if config['input_features'] == 'ixyz':
+elif config['input_features'] == 'ixyz':
     t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 4])
 
 t_vertex_coord_list = [tf.placeholder(dtype=tf.float32, shape=[None, 3])]

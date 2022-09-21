@@ -662,29 +662,30 @@ class KittiDataset(object):
             attr = front_cam_points.attr[img_points_in_image_idx,:])
         return cam_points_in_img
 
-    def get_cam_points_in_image_with_rgb(self, frame_idx,
-        downsample_voxel_size=None, calib=None, xyz_range=None):
+    def get_cam_points_in_image_with_rgb(self, frame_idx, downsample_voxel_size=None, calib=None, xyz_range=None):
         """Get camera points that are visible in image and append image color
         to the points as attributes."""
         if calib is None:
             calib = self.get_calib(frame_idx)
-        cam_points = self.get_cam_points(frame_idx, downsample_voxel_size,
-            calib = calib, xyz_range=xyz_range)
+
+        cam_points = self.get_cam_points(frame_idx, downsample_voxel_size, calib = calib, xyz_range = xyz_range)
         front_cam_points_idx = cam_points.xyz[:,2] > 0.1
-        front_cam_points = Points(cam_points.xyz[front_cam_points_idx, :],
-            cam_points.attr[front_cam_points_idx, :])
+        front_cam_points = Points(cam_points.xyz[front_cam_points_idx, :], cam_points.attr[front_cam_points_idx, :])
         image = self.get_image(frame_idx)
         height = image.shape[0]
         width = image.shape[1]
         img_points = self.cam_points_to_image(front_cam_points, calib)
+        
         img_points_in_image_idx = np.logical_and.reduce(
             [img_points.xyz[:,0]>0, img_points.xyz[:,0]<width,
              img_points.xyz[:,1]>0, img_points.xyz[:,1]<height])
+        
         cam_points_in_img = Points(
             xyz = front_cam_points.xyz[img_points_in_image_idx,:],
             attr = front_cam_points.attr[img_points_in_image_idx,:])
-        cam_points_in_img_with_rgb = self.rgb_to_cam_points(cam_points_in_img,
-            image, calib)
+        
+        cam_points_in_img_with_rgb = self.rgb_to_cam_points(cam_points_in_img, image, calib)
+        
         return cam_points_in_img_with_rgb
 
     def get_image(self, frame_idx):
@@ -990,8 +991,8 @@ class KittiDataset(object):
         """Append rgb info to camera points"""
 
         img_points = self.cam_points_to_image(points, calib)
-        rgb = image[np.int32(img_points.xyz[:,1]),
-            np.int32(img_points.xyz[:,0]),::-1].astype(np.float32)/255
+        rgb = image[np.int32(img_points.xyz[:,1]), np.int32(img_points.xyz[:,0]),::-1].astype(np.float32)/255
+        
         return Points(points.xyz, np.hstack([points.attr, rgb]))
 
     def velo_points_to_cam(self, points, calib):

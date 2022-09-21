@@ -22,7 +22,7 @@ from util.config_util import load_config, load_train_config
 from util.summary_util import write_summary_scale
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 # occlusion score function =============================================================
 def occlusion(label, xyz):
@@ -294,72 +294,73 @@ with tf.Session(graph=graph,config=tf.ConfigProto(gpu_options=gpu_options)) as s
 
 
 # Debug ===============================================================
-print("\n-------------------- Start of Debugging --------------------\n")
-print("VISUALIZATION_LEVEL: ", VISUALIZATION_LEVEL)
-print("IS_TEST: ", IS_TEST)
-print("USE_BOX_MERGE: ", USE_BOX_MERGE)
-print("USE_BOX_SCORE: ", USE_BOX_SCORE)
-print("DATASET_DIR: ", DATASET_DIR)
-print("DATASET_SPLIT_FILE: ", DATASET_SPLIT_FILE)
-print("OUTPUT_DIR: ", OUTPUT_DIR)
-print("CHECKPOINT_PATH: ", CHECKPOINT_PATH)
-print("CONFIG_PATH: ", CONFIG_PATH, "\n")
+if False:
+    print("\n-------------------- Start of Debugging --------------------\n")
+    print("VISUALIZATION_LEVEL: ", VISUALIZATION_LEVEL)
+    print("IS_TEST: ", IS_TEST)
+    print("USE_BOX_MERGE: ", USE_BOX_MERGE)
+    print("USE_BOX_SCORE: ", USE_BOX_SCORE)
+    print("DATASET_DIR: ", DATASET_DIR)
+    print("DATASET_SPLIT_FILE: ", DATASET_SPLIT_FILE)
+    print("OUTPUT_DIR: ", OUTPUT_DIR)
+    print("CHECKPOINT_PATH: ", CHECKPOINT_PATH)
+    print("CONFIG_PATH: ", CONFIG_PATH, "\n")
 
-print("NUM_TEST_SAMPLE: ", NUM_TEST_SAMPLE)
-print("NUM_CLASSES: ", NUM_CLASSES, "\n")
+    print("NUM_TEST_SAMPLE: ", NUM_TEST_SAMPLE)
+    print("NUM_CLASSES: ", NUM_CLASSES, "\n")
 
-print("config['box_encoding_method']: ", config['box_encoding_method'])
-print("BOX_ENCODING_LEN: ", BOX_ENCODING_LEN)
-print("box_encoding_fn: ", box_encoding_fn)
-print("box_decoding_fn: ", box_decoding_fn)
-print("config['input_features']: ", config['input_features'])
-print("t_initial_vertex_features: ", t_initial_vertex_features)
-print("len(config['runtime_graph_gen_kwargs']['level_configs']): ", len(config['runtime_graph_gen_kwargs']['level_configs']))
-print("t_vertex_coord_list: ", t_vertex_coord_list)
-print("t_edges_list: ", t_edges_list)
-print("t_keypoint_indices_list: ", t_keypoint_indices_list)
-print("t_is_training: ", t_is_training, "\n")
+    print("config['box_encoding_method']: ", config['box_encoding_method'])
+    print("BOX_ENCODING_LEN: ", BOX_ENCODING_LEN)
+    print("box_encoding_fn: ", box_encoding_fn)
+    print("box_decoding_fn: ", box_decoding_fn)
+    print("config['input_features']: ", config['input_features'])
+    print("t_initial_vertex_features: ", t_initial_vertex_features)
+    print("len(config['runtime_graph_gen_kwargs']['level_configs']): ", len(config['runtime_graph_gen_kwargs']['level_configs']))
+    print("t_vertex_coord_list: ", t_vertex_coord_list)
+    print("t_edges_list: ", t_edges_list)
+    print("t_keypoint_indices_list: ", t_keypoint_indices_list)
+    print("t_is_training: ", t_is_training, "\n")
 
-print("model: ", model)
-print("t_logits: ", t_logits)
-print("t_pred_box: ", t_pred_box)
-print("t_probs: ", t_probs)
-print("t_predictions: ", t_predictions)
-print("global_step: ", global_step, "\n")
+    print("model: ", model)
+    print("t_logits: ", t_logits)
+    print("t_pred_box: ", t_pred_box)
+    print("t_probs: ", t_probs)
+    print("t_predictions: ", t_predictions)
+    print("global_step: ", global_step, "\n")
 
-print("len(cam_rgb_points): ", len(cam_rgb_points), " x ", len(cam_rgb_points[0]))
-print("cam_rgb_points:\n", cam_rgb_points)
-print("cam_rgb_points.attr:\n", cam_rgb_points.attr)
-print("Combined ixyz:\n", np.hstack([cam_rgb_points.attr[:, [0]], cam_rgb_points.xyz]))
-"""
-    cam_rgb_points:
-        xyz = points that are visible in image
-        attr = image color to the points as attributes
-"""
-print("len(calib): ", len(calib), " x ", len(calib["P0"]))
-# print("calib: ", calib)
-print("len(image): ", len(image), " x ", len(image[0]))
-# print("image: ", image)
-print("len(box_label_list): ", len(box_label_list), " x ", len(box_label_list[0]), "\n")
-# print("box_label_list: ", box_label_list)
+    print("len(cam_rgb_points): ", len(cam_rgb_points), " x ", len(cam_rgb_points[0]))
+    # print("cam_rgb_points:\n", cam_rgb_points)
+    # print("cam_rgb_points.attr:\n", cam_rgb_points.attr)
+    # print("Combined ixyz:\n", np.hstack([cam_rgb_points.attr[:, [0]], cam_rgb_points.xyz]))
+    """
+        cam_rgb_points:
+            xyz = points that are visible in image
+            attr = image color to the points as attributes
+    """
+    print("len(calib): ", len(calib), " x ", len(calib["P0"]))
+    # print("calib: ", calib)
+    print("len(image): ", len(image), " x ", len(image[0]))
+    # print("image: ", image)
+    print("len(box_label_list): ", len(box_label_list), " x ", len(box_label_list[0]), "\n")
+    # print("box_label_list: ", box_label_list)
 
-print("graph_generate_fn: ", graph_generate_fn)
-# print("config['runtime_graph_gen_kwargs']: ", config['runtime_graph_gen_kwargs'])
+    print("graph_generate_fn: ", graph_generate_fn)
+    # print("config['runtime_graph_gen_kwargs']: ", config['runtime_graph_gen_kwargs'])
 
-print()
-print("len(input_v): ", len(input_v), " x ", len(input_v[0]))
-print("input_v: ", input_v)
-# print("fetches: ", fetches)
-print("len(feed_dict): ", len(feed_dict))
-# print("feed_dict: ", feed_dict)
-# print("results: ", results)
+    print()
+    print("len(input_v): ", len(input_v), " x ", len(input_v[0]))
+    print("input_v: ", input_v)
+    # print("fetches: ", fetches)
+    print("len(feed_dict): ", len(feed_dict))
+    # print("feed_dict: ", feed_dict)
+    print("results: ", results)
 
-# print processing time
-print()
-for key in time_dict:
-    print(key + " time : " + str(time_dict[key]/NUM_TEST_SAMPLE))
+    # print processing time
+    print()
+    for key in time_dict:
+        print(key + " time : " + str(time_dict[key]/NUM_TEST_SAMPLE))
 
-print("\n-------------------- End of Debugging --------------------\n")
+    print("\n-------------------- End of Debugging --------------------\n")
 
 
 ## Model ##
