@@ -276,18 +276,18 @@ class PointSetPooling(object):
         # print("output_MLP_activation_type: ", output_MLP_activation_type)
         # print()
 
-        point_features = tf.Print(point_features, [point_features], "\n1.point_features:", summarize=100)
-        point_coordinates = tf.Print(point_coordinates, [point_coordinates], "\n2.point_coordinates:", summarize=100)
-        keypoint_indices = tf.Print(keypoint_indices, [keypoint_indices], "\n3.keypoint_indices:", summarize=100)
-        set_indices = tf.Print(set_indices, [set_indices], "\n4.set_indices:", summarize=100)
+        # point_features = tf.Print(point_features, [point_features], "\n1.point_features:", summarize=100)
+        # point_coordinates = tf.Print(point_coordinates, [point_coordinates], "\n2.point_coordinates:", summarize=100)
+        # keypoint_indices = tf.Print(keypoint_indices, [keypoint_indices], "\n3.keypoint_indices:", summarize=100)
+        # set_indices = tf.Print(set_indices, [set_indices], "\n4.set_indices:", summarize=100)
 
         ### Gather the points in a set ###
         # point_features = tf.Print(point_features, [point_features], "point_features:", summarize=40)
         point_set_features = tf.gather(point_features, set_indices[:,0])
-        point_set_features = tf.Print(point_set_features, [point_set_features], "\n5.point_set_features:", summarize=100)
+        # point_set_features = tf.Print(point_set_features, [point_set_features], "\n5.point_set_features:", summarize=100)
         
         point_set_coordinates = tf.gather(point_coordinates, set_indices[:,0])
-        point_set_coordinates = tf.Print(point_set_coordinates, [point_set_coordinates], "\n6.point_set_coordinates:", summarize=100)
+        # point_set_coordinates = tf.Print(point_set_coordinates, [point_set_coordinates], "\n6.point_set_coordinates:", summarize=100)
         
         # print("point_set_features: ", point_set_features)
         # print("point_set_coordinates: ", point_set_coordinates)
@@ -295,10 +295,10 @@ class PointSetPooling(object):
 
         ### Gather the keypoints for each set ###
         point_set_keypoint_indices = tf.gather(keypoint_indices, set_indices[:, 1])
-        point_set_keypoint_indices = tf.Print(point_set_keypoint_indices, [point_set_keypoint_indices], "\n7.point_set_keypoint_indices:", summarize=100)
+        # point_set_keypoint_indices = tf.Print(point_set_keypoint_indices, [point_set_keypoint_indices], "\n7.point_set_keypoint_indices:", summarize=100)
         
         point_set_keypoint_coordinates = tf.gather(point_coordinates, point_set_keypoint_indices[:,0])
-        point_set_keypoint_coordinates = tf.Print(point_set_keypoint_coordinates, [point_set_keypoint_coordinates], "\n8.point_set_keypoint_coordinates:", summarize=100)
+        # point_set_keypoint_coordinates = tf.Print(point_set_keypoint_coordinates, [point_set_keypoint_coordinates], "\n8.point_set_keypoint_coordinates:", summarize=100)
         
         # print("point_set_keypoint_indices: ", point_set_keypoint_indices)
         # print("point_set_keypoint_coordinates: ", point_set_keypoint_coordinates)
@@ -306,17 +306,19 @@ class PointSetPooling(object):
 
         ### points within a set use relative coordinates to its keypoint ###
         point_set_coordinates = point_set_coordinates - point_set_keypoint_coordinates
-        point_set_coordinates = tf.Print(point_set_coordinates, [point_set_coordinates], "\n9.point_set_coordinates:", summarize=100)
+        # point_set_coordinates = tf.Print(point_set_coordinates, [point_set_coordinates], "\n9.point_set_coordinates:", summarize=100)
 
         ### edited ###
-        if False:
+        distance_calculation = False
+        print("distance_calculation: ", distance_calculation)
+        if distance_calculation:
             point_set_distance = tf.sqrt(tf.reduce_sum(tf.square(point_set_coordinates), 1, keepdims = True))
-            point_set_distance = tf.Print(point_set_distance, [point_set_distance], "\n9,5.point_set_distance:", summarize=100)
+            # point_set_distance = tf.Print(point_set_distance, [point_set_distance], "\n9,5.point_set_distance:", summarize=100)
             point_set_features = tf.concat([point_set_features, point_set_coordinates, point_set_distance], axis=-1)
         else:
             point_set_features = tf.concat([point_set_features, point_set_coordinates], axis=-1)
         
-        point_set_features = tf.Print(point_set_features, [point_set_features], "\n10.point_set_features:", summarize=100)
+        # point_set_features = tf.Print(point_set_features, [point_set_features], "\n10.point_set_features:", summarize=100)
         
         # print("point_set_features: ", point_set_features)
         # print()

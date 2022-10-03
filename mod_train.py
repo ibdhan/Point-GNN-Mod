@@ -23,7 +23,8 @@ from util.summary_util import write_summary_scale
 ### edited ###
 ### Setting GPU id ###
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
+GPU_id = "0, 1"
+os.environ["CUDA_VISIBLE_DEVICES"] = GPU_id
 
 # ArgParse ===============================================================
 parser = argparse.ArgumentParser(description='Training of PointGNN')
@@ -533,6 +534,7 @@ with tf.Session(graph=graph, config=tf.ConfigProto( allow_soft_placement=True, g
 
     ### edited ###
     print("input_features:", config['input_features'])
+    print("GPU_id_used:", GPU_id)
     print("NUM_GPU:", train_config['NUM_GPU'])
     print("max_epoch:", train_config['max_epoch'])
     print("NUM_TEST_SAMPLE:", NUM_TEST_SAMPLE)
