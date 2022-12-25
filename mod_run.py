@@ -21,6 +21,12 @@ from models import nms
 from util.config_util import load_config, load_train_config
 from util.summary_util import write_summary_scale
 
+### edited ###
+### Setting GPU id ###
+import os
+GPU_id = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = GPU_id
+
 # ArgParse ===============================================================
 parser = argparse.ArgumentParser(description='Point-GNN inference on KITTI')
 parser.add_argument('checkpoint_path', type=str,
@@ -109,25 +115,21 @@ box_encoding_fn = get_box_encoding_fn(config['box_encoding_method'])
 box_decoding_fn = get_box_decoding_fn(config['box_encoding_method'])
 
 if config['input_features'] == 'irgb':
-    t_initial_vertex_features = tf.placeholder(
-        dtype=tf.float32, shape=[None, 4])
+    t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 4])
 elif config['input_features'] == 'rgb':
-    t_initial_vertex_features = tf.placeholder(
-        dtype=tf.float32, shape=[None, 3])
+    t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 3])
 elif config['input_features'] == '0000':
-    t_initial_vertex_features = tf.placeholder(
-        dtype=tf.float32, shape=[None, 4])
+    t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 4])
 elif config['input_features'] == 'i000':
-    t_initial_vertex_features = tf.placeholder(
-        dtype=tf.float32, shape=[None, 4])
+    t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 4])
 elif config['input_features'] == 'i':
-    t_initial_vertex_features = tf.placeholder(
-        dtype=tf.float32, shape=[None, 1])
+    t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 1])
 elif config['input_features'] == '0':
-    t_initial_vertex_features = tf.placeholder(
-        dtype=tf.float32, shape=[None, 1])
+    t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 1])
 elif config['input_features'] == 'ixyz':
     t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 4])
+elif config['input_features'] == 'xyz':
+    t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 3])
 
 t_vertex_coord_list = [tf.placeholder(dtype=tf.float32, shape=[None, 3])]
 for _ in range(len(config['runtime_graph_gen_kwargs']['level_configs'])):
@@ -258,6 +260,8 @@ with tf.Session(graph=graph,config=tf.ConfigProto(gpu_options=gpu_options)) as s
             input_v = np.zeros((cam_rgb_points.attr.shape[0], 1))
         elif config['input_features'] == 'ixyz':
             input_v = np.hstack([cam_rgb_points.attr[:, [0]], cam_rgb_points.xyz])
+        elif config['input_features'] == 'xyz':
+            input_v = np.hstack([cam_rgb_points.xyz])
 
         last_layer_graph_level = config['model_kwargs']['layer_configs'][-1]['graph_level']
         last_layer_points_xyz = vertex_coord_list[last_layer_graph_level+1]

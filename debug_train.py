@@ -532,6 +532,7 @@ with tf.Session(graph=graph, config=tf.ConfigProto( allow_soft_placement=True, g
 
     ### edited ###
     print("input_features:", config['input_features'])
+    print("auto_offset:", config['model_kwargs']['layer_configs'][1]['kwargs']['auto_offset'])
     print("GPU_id_used:", GPU_id)
     print("NUM_GPU:", train_config['NUM_GPU'])
     print("max_epoch:", train_config['max_epoch'])

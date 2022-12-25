@@ -22,7 +22,7 @@ from util.config_util import load_config, load_train_config
 from util.summary_util import write_summary_scale
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # occlusion score function =============================================================
 def occlusion(label, xyz):

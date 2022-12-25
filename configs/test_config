@@ -28,7 +28,7 @@
         ]
     },
     "graph_gen_method": "multi_level_local_graph_v3",
-    "input_features": "i",
+    "input_features": "ixyz",
     "label_method": "Car",
     "loss": {
         "cls_loss_type": "softmax",

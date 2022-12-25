@@ -11,6 +11,14 @@ import tensorflow as tf
 def multi_layer_downsampling(points_xyz, base_voxel_size, levels=[1],
     add_rnd3d=False,):
     """Downsample the points using base_voxel_size at different scales"""
+
+    # print()
+    # print("multi_layer_downsampling")
+    # print("points_xyz:", points_xyz)
+    # print("base_voxel_size: ", base_voxel_size)
+    # print("levels:", levels)
+    # print("add_rnd3d: ", add_rnd3d)
+
     xmax, ymax, zmax = np.amax(points_xyz, axis=0)
     xmin, ymin, zmin = np.amin(points_xyz, axis=0)
     xyz_offset = np.asarray([[xmin, ymin, zmin]])
@@ -40,8 +48,7 @@ def multi_layer_downsampling(points_xyz, base_voxel_size, levels=[1],
             else:
                 pcd = open3d.PointCloud()
                 pcd.points = open3d.Vector3dVector(points_xyz)
-                downsampled_xyz = np.asarray(open3d.voxel_down_sample(
-                    pcd, voxel_size = base_voxel_size*level).points)
+                downsampled_xyz = np.asarray(open3d.voxel_down_sample(pcd, voxel_size = base_voxel_size*level).points)
                 downsampled_list.append(downsampled_xyz)
         last_level = level
     return downsampled_list
@@ -61,11 +68,18 @@ def multi_layer_downsampling_select(points_xyz, base_voxel_size, levels=[1],
 
     returns: vertex_coord_list, keypoint_indices_list
     """
+    # print()
+    # print("multi_layer_downsampling_select")
+    # print("points_xyz:", points_xyz)
+    # print("base_voxel_size: ", base_voxel_size)
+    # print("levels:", levels)
+    # print("add_rnd3d: ", add_rnd3d)
+
     # Voxel downsampling
-    vertex_coord_list = multi_layer_downsampling(
-        points_xyz, base_voxel_size, levels=levels, add_rnd3d=add_rnd3d)
+    vertex_coord_list = multi_layer_downsampling(points_xyz, base_voxel_size, levels=levels, add_rnd3d=add_rnd3d)
     num_levels = len(vertex_coord_list)
     assert num_levels == len(levels) + 1
+
     # Match downsampled vertices to original by a nearest neighbor search.
     keypoint_indices_list = []
     last_level = 0
@@ -116,8 +130,7 @@ def multi_layer_downsampling_random(points_xyz, base_voxel_size, levels=[1],
         if np.isclose(last_level, level):
             # same downsample scale (gnn layer), just copy it
             vertex_coord_list.append(np.copy(last_points_xyz))
-            keypoint_indices_list.append(
-                np.expand_dims(np.arange(len(last_points_xyz)), axis=1))
+            keypoint_indices_list.append(np.expand_dims(np.arange(len(last_points_xyz)), axis=1))
         else:
             if not add_rnd3d:
                 xyz_idx = (last_points_xyz - xyz_offset) \
@@ -169,19 +182,26 @@ def gen_multi_level_local_graph_v3(
         downsample_method: string, the name of downsampling method.
     returns: vertex_coord_list, keypoint_indices_list, edges_list
     """
+    # print()
+    # print("gen_multi_level_local_graph_v3")
+    # print("point_xyz: ", points_xyz)
+    # print("base_voxel_size: ", base_voxel_size)
+    # print("level_configs: ", level_configs)
+    # print("add_rnd3d: ", add_rnd3d) 
+    # print("downsample_method: ", downsample_method)
+    
     if isinstance(base_voxel_size, list):
         base_voxel_size = np.array(base_voxel_size)
+    
     # Gather the downsample scale for each graph
     scales = [config['graph_scale'] for config in level_configs]
+    
     # Generate vertex coordinates
     if downsample_method=='center':
-        vertex_coord_list, keypoint_indices_list = \
-            multi_layer_downsampling_select(
-                points_xyz, base_voxel_size, scales, add_rnd3d=add_rnd3d)
+        vertex_coord_list, keypoint_indices_list = multi_layer_downsampling_select(points_xyz, base_voxel_size, scales, add_rnd3d=add_rnd3d)
     if downsample_method=='random':
-        vertex_coord_list, keypoint_indices_list = \
-            multi_layer_downsampling_random(
-                points_xyz, base_voxel_size, scales, add_rnd3d=add_rnd3d)
+        vertex_coord_list, keypoint_indices_list = multi_layer_downsampling_random(points_xyz, base_voxel_size, scales, add_rnd3d=add_rnd3d)
+    
     # Create edges
     edges_list = []
     for config in level_configs:
@@ -192,6 +212,7 @@ def gen_multi_level_local_graph_v3(
         center_xyz = vertex_coord_list[graph_level+1]
         vertices = gen_graph_fn(points_xyz, center_xyz, **method_kwarg)
         edges_list.append(vertices)
+    
     return vertex_coord_list, keypoint_indices_list, edges_list
 
 def gen_disjointed_rnn_local_graph_v3(
@@ -204,19 +225,20 @@ def gen_disjointed_rnn_local_graph_v3(
         scale = np.array(scale)
         points_xyz = points_xyz/scale
         center_xyz = center_xyz/scale
-    nbrs = NearestNeighbors(
-        radius=radius,algorithm='ball_tree', n_jobs=1, ).fit(points_xyz)
+    
+    nbrs = NearestNeighbors(radius=radius, algorithm='ball_tree', n_jobs=1, ).fit(points_xyz)
     indices = nbrs.radius_neighbors(center_xyz, return_distance=False)
+    
     if num_neighbors > 0:
         if neighbors_downsample_method == 'random':
             indices = [neighbors if neighbors.size <= num_neighbors else
                 np.random.choice(neighbors, num_neighbors, replace=False)
                 for neighbors in indices]
+    
     vertices_v = np.concatenate(indices)
-    vertices_i = np.concatenate(
-        [i*np.ones(neighbors.size, dtype=np.int32)
-            for i, neighbors in enumerate(indices)])
+    vertices_i = np.concatenate([i*np.ones(neighbors.size, dtype=np.int32) for i, neighbors in enumerate(indices)])
     vertices = np.array([vertices_v, vertices_i]).transpose()
+    
     return vertices
 
 def get_graph_generate_fn(method_name):

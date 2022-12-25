@@ -116,13 +116,11 @@ def multi_layer_neural_network_fn(features, Ks=(64, 32, 64), is_logits=False,
     return features
 
 def graph_scatter_max_fn(point_features, point_centers, num_centers):
-    aggregated = tf.math.unsorted_segment_max(point_features,
-        point_centers, num_centers, name='scatter_max')
+    aggregated = tf.math.unsorted_segment_max(point_features, point_centers, num_centers, name='scatter_max')
     return aggregated
 
 def graph_scatter_sum_fn(point_features, point_centers, num_centers):
-    aggregated = tf.math.unsorted_segment_sum(point_features,
-        point_centers, num_centers, name='scatter_sum')
+    aggregated = tf.math.unsorted_segment_sum(point_features, point_centers, num_centers, name='scatter_sum')
     return aggregated
 
 def graph_scatter_mean_fn(point_features, point_centers, num_centers):
@@ -276,6 +274,10 @@ class PointSetPooling(object):
         # print("output_MLP_activation_type: ", output_MLP_activation_type)
         # print()
 
+        print("PointSetPooling Version: original")
+        print("point_MLP_depth_list: ", point_MLP_depth_list)
+        print("output_MLP_depth_list: ", output_MLP_depth_list)
+
         # point_features = tf.Print(point_features, [point_features], "\n1.point_features:", summarize=100)
         # point_coordinates = tf.Print(point_coordinates, [point_coordinates], "\n2.point_coordinates:", summarize=100)
         # keypoint_indices = tf.Print(keypoint_indices, [keypoint_indices], "\n3.keypoint_indices:", summarize=100)
@@ -354,6 +356,1273 @@ class PointSetPooling(object):
         
         return set_features
 
+### Original ###
+class GraphNetAutoCenter_ori(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: original")
+        print("auto_offset: ", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+        # print("s_vertex_features: ", s_vertex_features)
+        # print("s_vertex_coordinates: ", s_vertex_coordinates)
+        # print()
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+            # print("offset: ", offset)
+            # print("input_vertex_coordinates: ", input_vertex_coordinates)
+            # print()
+                
+        ### Gather the destination vertex of the edges ###
+        d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+        # print("d_vertex_coordinates: ", d_vertex_coordinates)
+        
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([s_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
+        # print("edge_features: ", edge_features)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod version 1 ###
+""" Simplified the edge feature function """
+class GraphNetAutoCenter_ModV1(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: mod_v1")
+        print("auto_offset: ", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+        # print("s_vertex_features: ", s_vertex_features)
+        # print("s_vertex_coordinates: ", s_vertex_coordinates)
+        # print()
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+            # print("offset: ", offset)
+            # print("input_vertex_coordinates: ", input_vertex_coordinates)
+            # print()
+        
+        ### edited ###
+        simple_v1 = False
+        print("simple_v1: ", simple_v1)
+        if simple_v1:
+            ### Prepare initial edge features ###
+            edge_features = tf.concat([s_vertex_features, s_vertex_coordinates], axis=-1)
+            # print("edge_features: ", edge_features)
+        else:
+            ### Gather the destination vertex of the edges ###
+            d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+            # print("d_vertex_coordinates: ", d_vertex_coordinates)
+            
+            ### Prepare initial edge features ###
+            edge_features = tf.concat([s_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
+            # print("edge_features: ", edge_features)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod Version 2 ###
+""" Add vertex feature (surce and destination) in the edge function """
+class GraphNetAutoCenter_ModV2(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: mod_v2")
+        print("auto_offset: ", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+        
+        ### Gather the destination vertex of the edges ###
+        d_vertex_features = tf.gather(input_vertex_features, edges[:,1])
+        d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+        
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([s_vertex_features, s_vertex_features - d_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod Version 3 ###
+""" Remove Residual Connection """
+class GraphNetAutoCenter_ModV3(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: mod_v3")
+        print("auto_offset: ", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+                
+        ### Gather the destination vertex of the edges ###
+        d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+        
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([s_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        ### Residual Connection removed ###
+        output_vertex_features = update_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod Version 4 ###
+""" Add vertex feature (surce and destination) in the edge function (Edited from version 2) """
+class GraphNetAutoCenter_ModV4(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: mod_v4")
+        print("auto_offset: ", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+        
+        ### Gather the destination vertex of the edges ###
+        d_vertex_features = tf.gather(input_vertex_features, edges[:,1])
+        d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+        
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([d_vertex_features, s_vertex_features - d_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod Version 5 ###
+""" Add vertex feature (surce and destination) and distance in the edge function (Edited from version 4) """
+class GraphNetAutoCenter_ModV5(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: mod_v5")
+        print("auto_offset: ", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+        
+        ### Gather the destination vertex of the edges ###
+        d_vertex_features = tf.gather(input_vertex_features, edges[:,1])
+        d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+
+        ### Calculate relative coordinates and relative distance ###
+        relative_coordinates = s_vertex_coordinates - d_vertex_coordinates
+        relative_distance = tf.sqrt(tf.reduce_sum(tf.square(relative_coordinates), 1, keepdims = True))
+        
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([d_vertex_features, s_vertex_features - d_vertex_features, relative_coordinates, relative_distance], axis=-1)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod Version 6 ###
+""" Add distance in edge function """
+class GraphNetAutoCenter_ModV6(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: mod_v6")
+        print("auto_offset:", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+        
+        ### Gather the destination vertex of the edges ###
+        d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+
+        ### Calculate relative coordinates and relative distance ###
+        relative_coordinates = s_vertex_coordinates - d_vertex_coordinates
+        relative_distance = tf.sqrt(tf.reduce_sum(tf.square(relative_coordinates), 1, keepdims = True))
+        
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([s_vertex_features, relative_coordinates, relative_distance], axis=-1)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod Version 7 ###
+""" Add vertex feature (surce and destination) in the edge function and enavle auto_offset"""
+class GraphNetAutoCenter_ModV7(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: mod_v7")
+        print("auto_offset:", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+        
+        ### Gather the destination vertex of the edges ###
+        d_vertex_features = tf.gather(input_vertex_features, edges[:,1])
+        d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+        
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([s_vertex_features, s_vertex_features - d_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod Version 8 ###
+""" Fix the auto_offset and add vertex feature (surce and destination) in the edge function (Edited from version 4) """
+class GraphNetAutoCenter_ModV8(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: mod_v8")
+        print("auto_offset: ", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+        
+        ### Gather the destination vertex of the edges ###
+        d_vertex_features = tf.gather(input_vertex_features, edges[:,1])
+        d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+        
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([d_vertex_features, s_vertex_features - d_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod Version 9 ###
+""" Add vertex feature (surce and destination) and distance in the edge function """
+class GraphNetAutoCenter_ModV9(object):
+    """A class to implement point graph netural network layer."""
+
+    def __init__(self,
+        edge_feature_fn=multi_layer_neural_network_fn,
+        aggregation_fn=graph_scatter_max_fn,
+        update_fn=multi_layer_neural_network_fn,
+        auto_offset_fn=multi_layer_neural_network_fn):
+        self._edge_feature_fn = edge_feature_fn
+        self._aggregation_fn = aggregation_fn
+        self._update_fn = update_fn
+        self._auto_offset_fn = auto_offset_fn
+
+    def apply_regular(self,
+        input_vertex_features,
+        input_vertex_coordinates,
+        NOT_USED,
+        edges,
+        edge_MLP_depth_list=None,
+        edge_MLP_normalization_type='fused_BN_center',
+        edge_MLP_activation_type = 'ReLU',
+        update_MLP_depth_list=None,
+        update_MLP_normalization_type='fused_BN_center',
+        update_MLP_activation_type = 'ReLU',
+        auto_offset=False,
+        auto_offset_MLP_depth_list=None,
+        auto_offset_MLP_normalization_type='fused_BN_center',
+        auto_offset_MLP_feature_activation_type = 'ReLU',
+        ):
+        """apply one layer graph network on a graph. .
+
+        Args:
+            input_vertex_features: a [N, M] tensor. N is the number of vertices.
+            M is the length of the features.
+            input_vertex_coordinates: a [N, D] tensor. N is the number of
+            vertices. D is the dimension of the coordinates.
+            NOT_USED: leave it here for API compatibility.
+            edges: a [K, 2] tensor. K pairs of (src, dest) vertex indices.
+            edge_MLP_depth_list: a list of MLP units to extract edge features.
+            edge_MLP_normalization_type: the normalization function of MLP.
+            edge_MLP_activation_type: the activation function of MLP.
+            update_MLP_depth_list: a list of MLP units to extract update
+            features.
+            update_MLP_normalization_type: the normalization function of MLP.
+            update_MLP_activation_type: the activation function of MLP.
+            auto_offset: boolean, use auto registration or not.
+            auto_offset_MLP_depth_list: a list of MLP units to compute offset.
+            auto_offset_MLP_normalization_type: the normalization function.
+            auto_offset_MLP_feature_activation_type: the activation function.
+
+        returns: a [N, M] tensor. Updated vertex features.
+        """
+        # print("input_vertex_features: ", input_vertex_features)
+        # print("input_vertex_coordinates: ", input_vertex_coordinates)
+        # print("edges: ", edges)
+        # print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        # print("edge_MLP_normalization_type: ", edge_MLP_normalization_type)
+        # print("edge_MLP_activation_type: ", edge_MLP_activation_type)
+        # print("update_MLP_depth_list: ", update_MLP_depth_list)
+        # print("update_MLP_normalization_type: ", update_MLP_normalization_type)
+        # print("update_MLP_activation_type: ", update_MLP_activation_type)
+        # print("auto_offset: ", auto_offset)
+        # print("auto_offset_MLP_depth_list: ", auto_offset_MLP_depth_list)
+        # print("auto_offset_MLP_normalization_type: ", auto_offset_MLP_normalization_type)
+        # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
+        # print()
+
+        ### Identity ###
+        print("GNN Version: mod_v9")
+        print("auto_offset: ", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
+        s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
+        s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
+
+        ### [optional] Compute the coordinates offset ###
+        if auto_offset:
+            offset = self._auto_offset_fn(input_vertex_features,
+                Ks=auto_offset_MLP_depth_list, is_logits=True,
+                normalization_type=auto_offset_MLP_normalization_type,
+                activation_type=auto_offset_MLP_feature_activation_type)
+            input_vertex_coordinates = input_vertex_coordinates + offset
+        
+        ### Gather the destination vertex of the edges ###
+        d_vertex_features = tf.gather(input_vertex_features, edges[:,1])
+        d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
+
+        ### Calculate relative coordinates and relative distance ###
+        relative_coordinates = s_vertex_coordinates - d_vertex_coordinates
+        relative_distance = tf.sqrt(tf.reduce_sum(tf.square(relative_coordinates), 1, keepdims = True))
+        
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([s_vertex_features, s_vertex_features - d_vertex_features, relative_coordinates, relative_distance], axis=-1)
+        
+        with tf.variable_scope('extract_vertex_features'):
+            ### Extract edge features ###
+            edge_features = self._edge_feature_fn(
+                edge_features,
+                Ks=edge_MLP_depth_list,
+                is_logits=False,
+                normalization_type=edge_MLP_normalization_type,
+                activation_type=edge_MLP_activation_type)
+            
+            ### Aggregate edge features ###
+            aggregated_edge_features = self._aggregation_fn(
+                edge_features,
+                edges[:, 1],
+                tf.shape(input_vertex_features)[0])
+        
+        ### Update vertex features ###
+        with tf.variable_scope('combined_features'):
+            update_features = self._update_fn(aggregated_edge_features,
+                Ks=update_MLP_depth_list, 
+                is_logits=True,
+                normalization_type=update_MLP_normalization_type,
+                activation_type=update_MLP_activation_type)
+        
+        output_vertex_features = update_features + input_vertex_features
+
+        # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
+        
+        return output_vertex_features
+
+### Mod Version 10 ###
+""" Add vertex feature (surce and destination) in the edge function and enable auto_offset"""
 class GraphNetAutoCenter(object):
     """A class to implement point graph netural network layer."""
 
@@ -421,34 +1690,33 @@ class GraphNetAutoCenter(object):
         # print("auto_offset_MLP_feature_activation_type: ", auto_offset_MLP_feature_activation_type)
         # print()
 
-        # Gather the source vertex of the edges
+        ### Identity ###
+        print("GNN Version: mod_v10")
+        print("auto_offset:", auto_offset)
+        print("edge_MLP_depth_list: ", edge_MLP_depth_list)
+        print("update_MLP_depth_list: ", update_MLP_depth_list)
+
+        ### Gather the source vertex of the edges ###
         s_vertex_features = tf.gather(input_vertex_features, edges[:,0])
         s_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:,0])
-        # print("s_vertex_features: ", s_vertex_features)
-        # print("s_vertex_coordinates: ", s_vertex_coordinates)
-        # print()
 
-        # [optional] Compute the coordinates offset
+        ### [optional] Compute the coordinates offset ###
         if auto_offset:
             offset = self._auto_offset_fn(input_vertex_features,
                 Ks=auto_offset_MLP_depth_list, is_logits=True,
                 normalization_type=auto_offset_MLP_normalization_type,
                 activation_type=auto_offset_MLP_feature_activation_type)
             input_vertex_coordinates = input_vertex_coordinates + offset
-            # print("offset: ", offset)
-            # print("input_vertex_coordinates: ", input_vertex_coordinates)
-            # print()
         
-        # Gather the destination vertex of the edges
+        ### Gather the destination vertex of the edges ###
+        d_vertex_features = tf.gather(input_vertex_features, edges[:,1])
         d_vertex_coordinates = tf.gather(input_vertex_coordinates, edges[:, 1])
-        # print("d_vertex_coordinates: ", d_vertex_coordinates)
         
-        # Prepare initial edge features
-        edge_features = tf.concat([s_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
-        # print("edge_features: ", edge_features)
+        ### Prepare initial edge features ###
+        edge_features = tf.concat([s_vertex_features, d_vertex_features, s_vertex_coordinates - d_vertex_coordinates], axis=-1)
         
         with tf.variable_scope('extract_vertex_features'):
-            # Extract edge features
+            ### Extract edge features ###
             edge_features = self._edge_feature_fn(
                 edge_features,
                 Ks=edge_MLP_depth_list,
@@ -456,13 +1724,13 @@ class GraphNetAutoCenter(object):
                 normalization_type=edge_MLP_normalization_type,
                 activation_type=edge_MLP_activation_type)
             
-            # Aggregate edge features
+            ### Aggregate edge features ###
             aggregated_edge_features = self._aggregation_fn(
                 edge_features,
                 edges[:, 1],
                 tf.shape(input_vertex_features)[0])
         
-        # Update vertex features
+        ### Update vertex features ###
         with tf.variable_scope('combined_features'):
             update_features = self._update_fn(aggregated_edge_features,
                 Ks=update_MLP_depth_list, 
@@ -475,3 +1743,4 @@ class GraphNetAutoCenter(object):
         # output_vertex_features = tf.Print(output_vertex_features, [output_vertex_features], "\noutput_vertex_features:", summarize=100)
         
         return output_vertex_features
+

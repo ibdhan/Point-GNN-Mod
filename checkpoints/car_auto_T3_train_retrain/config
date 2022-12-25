@@ -170,7 +170,7 @@
             {
                 "graph_gen_kwargs": {
                     "num_neighbors": -1,
-                    "radius": 4.0
+                    "radius": 8.0
                 },
                 "graph_gen_method": "disjointed_rnn_local_graph_v3",
                 "graph_level": 1,

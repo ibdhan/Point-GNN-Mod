@@ -23,7 +23,7 @@ from util.summary_util import write_summary_scale
 ### edited ###
 ### Setting GPU id ###
 import os
-GPU_id = "0, 1"
+GPU_id = "0"
 os.environ["CUDA_VISIBLE_DEVICES"] = GPU_id
 
 # ArgParse ===============================================================
@@ -111,6 +111,8 @@ def fetch_data(frame_idx):
         input_v = np.zeros((cam_rgb_points.attr.shape[0], 1))
     elif config['input_features'] == 'ixyz':
         input_v = np.hstack([cam_rgb_points.attr[:, [0]], cam_rgb_points.xyz])
+    elif config['input_features'] == 'xyz':
+        input_v = np.hstack([cam_rgb_points.xyz])
     
     last_layer_graph_level = config['model_kwargs']['layer_configs'][-1]['graph_level']
     last_layer_points_xyz = vertex_coord_list[last_layer_graph_level+1]
@@ -216,6 +218,8 @@ for gi in range(NUM_GPU):
                 t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 1])
             elif config['input_features'] == 'ixyz':
                 t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 4])
+            elif config['input_features'] == 'xyz':
+                t_initial_vertex_features = tf.placeholder(dtype=tf.float32, shape=[None, 3])
 
             t_vertex_coord_list = [tf.placeholder(dtype=tf.float32, shape=[None, 3])]
             for _ in range(len(config['graph_gen_kwargs']['level_configs'])):
@@ -536,11 +540,15 @@ with tf.Session(graph=graph, config=tf.ConfigProto( allow_soft_placement=True, g
     print("input_features:", config['input_features'])
     print("GPU_id_used:", GPU_id)
     print("NUM_GPU:", train_config['NUM_GPU'])
-    print("max_epoch:", train_config['max_epoch'])
+    print("train_dir:", train_config['train_dir'])
+    print()
     print("NUM_TEST_SAMPLE:", NUM_TEST_SAMPLE)
     print("batch_size:", batch_size)
+    print("max_epoch:", train_config['max_epoch'])
+    print("max_steps:", train_config['max_steps'])
     print("initial_lr:", train_config['initial_lr'])
-    print("train_dir:", train_config['train_dir'])
+    print("decay_factor:", train_config['decay_factor'])
+    print("decay_step:", train_config['decay_step'])
     
     for epoch_idx in range((previous_step*batch_size)//NUM_TEST_SAMPLE, train_config['max_epoch']):
         sess.run(local_variables_initializer)
